@@ -70,6 +70,43 @@ const Menu = () => {
         ctx.fillRect(15, 55, 10, 15); // Front leg
       }
 
+        const drawPixelSword = () => {
+            ctx.save();
+            // Position near the hand and rotate to point forward
+            ctx.translate(50, 50);
+            ctx.rotate(Math.PI / 6);
+            const s = 2.5; // Increased pixel scale for a bigger sword
+
+            // Hilt
+            ctx.fillStyle = '#6F482A'; // Light Brown (Pommel)
+            ctx.fillRect(-s, s * 3, s * 2, s);
+            ctx.fillStyle = '#3B2717'; // Dark Brown (Grip)
+            ctx.fillRect(-s, s, s * 2, s * 2);
+
+            // Cross-guard
+            ctx.fillStyle = '#3B2717'; // Dark Brown
+            ctx.fillRect(-s * 3, 0, s * 6, s);
+            ctx.fillRect(-s * 2, -s, s * 4, s);
+
+            // Blade
+            // Darkest outline
+            ctx.fillStyle = '#285E5E';
+            ctx.fillRect(-s, -s * 9, s * 2, s * 8);
+            // Medium outline
+            ctx.fillStyle = '#3A8585';
+            ctx.fillRect(-s * 2, -s * 8, s, s * 6); // Left edge
+            ctx.fillRect(s, -s * 8, s, s * 6);     // Right edge
+            ctx.fillRect(-s, -s * 10, s * 2, s);   // Tip
+            // Lightest part
+            ctx.fillStyle = '#61E1E1';
+            ctx.fillRect(-s, -s * 8, s * 2, s * 6); // Blade inner
+            ctx.fillRect(-s, -s, s, -s);           // Shine spot
+
+            ctx.restore();
+        };
+
+      drawPixelSword();
+
       // Eye
       ctx.fillStyle = 'white';
       ctx.fillRect(52, 22, 5, 5);

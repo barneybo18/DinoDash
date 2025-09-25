@@ -4,8 +4,8 @@ import { useGame } from '../context/GameContext';
 
 const SCENERY_CONFIG_BASE = {
     Beach: {
-        groundColor: '#FFD700', // Bright Gold/Yellow Sand
-        skyColor: 'linear-gradient(to bottom, #87CEEB, #FFDAB9)', // Sky to sunset
+        groundColor: '#FFD700',
+        skyColor: 'linear-gradient(to bottom, #87CEEB, #FFDAB9)',
         gravity: 0.6,
         jumpHeight: -18,
         obstacles: [
@@ -14,18 +14,18 @@ const SCENERY_CONFIG_BASE = {
         ]
     },
     Space: {
-        groundColor: '#6A0DAD', // Vibrant purple for space bridge
-        skyColor: '#000020', // Deep space
+        groundColor: '#6A0DAD',
+        skyColor: '#000020',
         gravity: 0.3,
         jumpHeight: -15,
         obstacles: [
             { type: 'ground', emoji: '👾', width: 40, height: 40 },
-            { type: 'air', emoji: '☄️', width: 50, height: 50 },
+            { type: 'air', emoji: '☄️', width: 50, height: 50, yVariation: true },
         ]
     },
     Desert: {
-        groundColor: '#EDC9AF', // Desert sand
-        skyColor: 'linear-gradient(to bottom, #F0E68C, #FFD700)', // Hot desert sky
+        groundColor: '#EDC9AF',
+        skyColor: 'linear-gradient(to bottom, #F0E68C, #FFD700)',
         gravity: 0.6,
         jumpHeight: -18,
         obstacles: [
@@ -34,8 +34,8 @@ const SCENERY_CONFIG_BASE = {
         ]
     },
     Cityscape: {
-        groundColor: '#606060', // Concrete gray
-        skyColor: 'linear-gradient(to bottom, #2C3E50, #4682B4)', // Night to dusk
+        groundColor: '#606060',
+        skyColor: 'linear-gradient(to bottom, #2C3E50, #4682B4)',
         gravity: 0.6,
         jumpHeight: -18,
         obstacles: [
@@ -54,14 +54,67 @@ const GameCanvas = () => {
     const [gameState, setGameState] = useState({
         finalScore: 0,
         isGameOver: false,
+        showInstructions: false,
     });
+    const [isMuted, setIsMuted] = useState(false);
+    const jumpSoundRef = useRef(null);
+    const duckSoundRef = useRef(null);
+    const gameOverSoundRef = useRef(null);
+    const startSoundRef = useRef(null);
+    const backgroundMusicRef = useRef(null);
 
     const config = SCENERY_CONFIG_BASE[scenery];
     const backgroundItemsRef = useRef([]);
 
+    // Initialize audio files
+    useEffect(() => {
+        jumpSoundRef.current = new Audio('/sounds/jump.mp3'); // Placeholder path
+        duckSoundRef.current = new Audio('/sounds/duck.mp3');
+        gameOverSoundRef.current = new Audio('/sounds/game-over.mp3');
+        startSoundRef.current = new Audio('/sounds/start.mp3');
+        backgroundMusicRef.current = new Audio(`/sounds/${scenery.toLowerCase()}-bg.mp3`);
+        backgroundMusicRef.current.loop = true;
+        backgroundMusicRef.current.volume = 0.3;
+
+        return () => {
+            [jumpSoundRef, duckSoundRef, gameOverSoundRef, startSoundRef, backgroundMusicRef].forEach(ref => {
+                if (ref.current) {
+                    ref.current.pause();
+                    ref.current = null;
+                }
+            });
+        };
+    }, [scenery]);
+
     useEffect(() => {
         inputRef.current = input;
     }, [input]);
+
+    useEffect(() => {
+        const hasPlayedBefore = localStorage.getItem('dinoDashPlayedBefore');
+        if (!hasPlayedBefore) {
+            setGameState(prev => ({ ...prev, showInstructions: true }));
+            localStorage.setItem('dinoDashPlayedBefore', 'true');
+        }
+    }, []);
+
+    const playAudio = (audioRef, options = {}) => {
+        if (audioRef.current && !isMuted) {
+            audioRef.current.currentTime = 0;
+            audioRef.current.volume = options.volume || 1.0;
+            audioRef.current.play().catch(e => console.error("Audio play failed:", e));
+        }
+    };
+
+    const handleStartGame = () => {
+        setGameState(prev => ({ ...prev, showInstructions: false }));
+        // This first user interaction unlocks audio playback in the browser
+        const allAudio = [jumpSoundRef, duckSoundRef, gameOverSoundRef, startSoundRef, backgroundMusicRef];
+        allAudio.forEach(ref => { if (ref.current) ref.current.muted = false; });
+
+        playAudio(startSoundRef);
+        playAudio(backgroundMusicRef, { volume: 0.3 });
+    };
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -71,7 +124,7 @@ const GameCanvas = () => {
         const groundY = canvas.height - 50;
 
         if (scenery === 'Space') {
-            const numStars = 200; // Increased for denser starfield
+            const numStars = 200;
             for (let i = 0; i < numStars; i++) {
                 items.push({
                     type: 'star',
@@ -104,7 +157,7 @@ const GameCanvas = () => {
                 radius: 20,
                 color: '#1E90FF'
             });
-            for (let i = 0; i < 7; i++) { // Increased for continuous bridge
+            for (let i = 0; i < 7; i++) {
                 items.push({
                     type: 'bridgeLine',
                     x: i * (canvas.width / 7),
@@ -211,6 +264,8 @@ const GameCanvas = () => {
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
         let animationFrameId;
+        let wasJumping = false;
+        let wasDucking = false;
 
         const dino = {
             x: 50,
@@ -317,13 +372,56 @@ const GameCanvas = () => {
                         ctx.closePath();
                         ctx.fill();
                     }
+
+                    const drawPixelSword = () => {
+                        ctx.save();
+                        // Position near the hand and rotate to point forward
+                        ctx.translate(50, 50);
+                        ctx.rotate(Math.PI / 6);
+                        const s = 2.5; // Increased pixel scale for a bigger sword
+
+                        // Hilt
+                        ctx.fillStyle = '#6F482A'; // Light Brown (Pommel)
+                        ctx.fillRect(-s, s * 3, s * 2, s);
+                        ctx.fillStyle = '#3B2717'; // Dark Brown (Grip)
+                        ctx.fillRect(-s, s, s * 2, s * 2);
+
+                        // Cross-guard
+                        ctx.fillStyle = '#3B2717'; // Dark Brown
+                        ctx.fillRect(-s * 3, 0, s * 6, s);
+                        ctx.fillRect(-s * 2, -s, s * 4, s);
+
+                        // Blade
+                        // Darkest outline
+                        ctx.fillStyle = '#285E5E';
+                        ctx.fillRect(-s, -s * 9, s * 2, s * 8);
+                        // Medium outline
+                        ctx.fillStyle = '#3A8585';
+                        ctx.fillRect(-s * 2, -s * 8, s, s * 6); // Left edge
+                        ctx.fillRect(s, -s * 8, s, s * 6);     // Right edge
+                        ctx.fillRect(-s, -s * 10, s * 2, s);   // Tip
+                        // Lightest part
+                        ctx.fillStyle = '#61E1E1';
+                        ctx.fillRect(-s, -s * 8, s * 2, s * 6); // Blade inner
+                        ctx.fillRect(-s, -s, s, -s);           // Shine spot
+
+                        ctx.restore();
+                    };
+                    drawPixelSword();
                 }
                 ctx.restore();
             },
             update() {
-                if (inputRef.current.jump && !this.isJumping) {
+                if (inputRef.current.jump && !this.isJumping && !wasJumping) {
                     this.dy = config.jumpHeight;
                     this.isJumping = true;
+                    playAudio(jumpSoundRef);
+                }
+                if (inputRef.current.duck && !wasDucking && !this.isJumping) {
+                    if (!isMuted && duckSoundRef.current) {
+                        duckSoundRef.current.currentTime = 0;
+                        duckSoundRef.current.play();
+                    }
                 }
                 this.dy += config.gravity;
                 this.y += this.dy;
@@ -333,6 +431,8 @@ const GameCanvas = () => {
                     this.isJumping = false;
                 }
                 this.isDucking = inputRef.current.duck;
+                wasJumping = inputRef.current.jump;
+                wasDucking = inputRef.current.duck;
             }
         };
 
@@ -340,7 +440,6 @@ const GameCanvas = () => {
             const bgItems = backgroundItemsRef.current;
             const groundY = canvas.height - 50;
 
-            // Draw gradient sky
             let skyGradient;
             if (typeof config.skyColor === 'string' && config.skyColor.startsWith('linear-gradient')) {
                 skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
@@ -360,7 +459,6 @@ const GameCanvas = () => {
             }
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Draw background elements
             bgItems.forEach(item => {
                 if (item.type === 'star') {
                     const opacity = 0.7 + Math.sin(frameCount * item.twinkleSpeed + item.twinklePhase) * 0.3;
@@ -386,6 +484,11 @@ const GameCanvas = () => {
                     ctx.beginPath();
                     ctx.arc(item.x, item.y, item.radius + 5, 0, Math.PI * 2);
                     ctx.fill();
+                } else if (item.type === 'bridgeLine') {
+                    ctx.fillStyle = 'rgba(106, 13, 173, 0.8)';
+                    ctx.fillRect(item.x, item.y, item.width, item.height);
+                    ctx.fillStyle = 'rgba(186, 85, 211, 0.3)';
+                    ctx.fillRect(item.x, item.y - 2, item.width, item.height + 4);
                 } else if (item.type === 'wave') {
                     ctx.fillStyle = item.layer === 'foreground'
                         ? `rgba(0, 105, 148, ${0.5 + Math.sin(frameCount * 0.01) * 0.05})`
@@ -476,7 +579,6 @@ const GameCanvas = () => {
                 }
             });
 
-            // Draw sand texture for Beach
             if (scenery === 'Beach') {
                 ctx.fillStyle = 'rgba(210, 180, 140, 0.3)';
                 for (let i = 0; i < 50; i++) {
@@ -608,15 +710,25 @@ const GameCanvas = () => {
         let obstacles = [];
         let frameCount = 0;
         let score = 0;
-        let speed = 10;
+        let speed = 8;
         let scoreMilestone = 100;
+
+        if (gameState.showInstructions) {
+            return;
+        }
+
+        // Play start sound and background music when game starts
+        if (!gameState.isGameOver) {
+            playAudio(startSoundRef);
+            playAudio(backgroundMusicRef, { volume: 0.3 });
+        }
 
         const gameLoop = () => {
             if (!gameState.isGameOver) {
                 frameCount++;
                 score += 0.1;
                 if (Math.floor(score) > scoreMilestone) {
-                    speed += 1.0;
+                    speed += 0.5;
                     scoreMilestone += 100;
                 }
                 updateBackground(speed);
@@ -627,6 +739,9 @@ const GameCanvas = () => {
                     let y;
                     if (template.type === 'ground') {
                         y = canvas.height - 50 - template.height;
+                    } else if (template.yVariation && scenery === 'Space') {
+                        const isHigh = Math.random() > 0.5;
+                        y = isHigh ? canvas.height - 50 - template.height - 80 : canvas.height - 50 - template.height - 35;
                     } else {
                         y = canvas.height - 50 - template.height - 35;
                     }
@@ -648,6 +763,10 @@ const GameCanvas = () => {
                     ) {
                         setGameState({ finalScore: score, isGameOver: true });
                         addHighScore(Math.floor(score));
+                        playAudio(gameOverSoundRef);
+                        if (backgroundMusicRef.current) {
+                            backgroundMusicRef.current.pause();
+                        }
                     }
                     if (obs.x + obs.width < 0) {
                         obstacles.splice(index, 1);
@@ -655,7 +774,7 @@ const GameCanvas = () => {
                 });
             }
 
-            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas first
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawSceneryBackground(frameCount);
             ctx.fillStyle = config.groundColor;
             ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
@@ -699,8 +818,12 @@ const GameCanvas = () => {
             if (gameState.isGameOver) {
                 if (e.code === 'Space') {
                     setGameState({ finalScore: 0, isGameOver: false });
+                    // The main useEffect will now handle restarting the music
                 } else if (e.code === 'Enter') {
                     setScreen('menu');
+                    if (backgroundMusicRef.current) {
+                        backgroundMusicRef.current.pause();
+                    }
                 }
             }
         };
@@ -710,16 +833,48 @@ const GameCanvas = () => {
             cancelAnimationFrame(animationFrameId);
             document.removeEventListener('keydown', handleKey);
         };
-    }, [gameState, scenery, dinoSkin]);
+    }, [gameState, scenery, dinoSkin, isMuted]);
 
     return (
         <div className="w-full h-screen flex flex-col items-center justify-center bg-black p-4">
             <canvas
                 ref={canvasRef}
-                width={1280}
-                height={768}
-                className="bg-gray-800 w-full h-auto max-w-7xl rounded-lg shadow-[0_0_15px_rgba(0,255,255,0.5)]"
+                width={1000}
+                height={600}
+                className="bg-gray-800 w-full h-auto max-w-5xl rounded-lg shadow-[0_0_15px_rgba(0,255,255,0.5)]"
             />
+            {gameState.showInstructions && (
+                <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 p-8 rounded-xl shadow-2xl border-2 border-purple-500 w-full max-w-2xl text-white text-center">
+                        <h1 className="text-4xl font-press-start mb-6 text-yellow-400">How to Play</h1>
+                        <p className="text-lg mb-6">Welcome to Dino Dash: Multiverse Run!</p>
+                        <div className="text-left space-y-4 mb-8">
+                            <p><strong>Jump:</strong> Press <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Space</kbd> or <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">ArrowUp</kbd></p>
+                            <p><strong>Crouch:</strong> Press <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">ArrowDown</kbd></p>
+                        </div>
+                        <div className="flex justify-around items-center mb-8">
+                            <div className="flex flex-col items-center">
+                                <p className="mb-2">Jump over these:</p>
+                                <span className="text-5xl">{config.obstacles.find(o => o.type === 'ground')?.emoji || '🌵'}</span>
+                            </div>
+                            <div className="flex flex-col items-center">
+                                <p className="mb-2">Crouch under these:</p>
+                                <span className="text-5xl">{config.obstacles.find(o => o.type === 'air')?.emoji || '🚁'}</span>
+                            </div>
+                        </div>
+                        <div className="flex justify-center space-x-4">
+                            <button
+                                onClick={handleStartGame}
+                                className="text-xl font-press-start px-8 py-3 border-2 border-cyan-400 text-cyan-400 rounded-lg hover:bg-cyan-400 hover:text-gray-900 transition-colors"
+                            >Got It!</button>
+                            <button
+                                onClick={() => setIsMuted(!isMuted)}
+                                className="text-xl font-press-start px-8 py-3 border-2 border-cyan-400 text-cyan-400 rounded-lg hover:bg-cyan-400 hover:text-gray-900 transition-colors"
+                            >{isMuted ? 'Unmute' : 'Mute'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
