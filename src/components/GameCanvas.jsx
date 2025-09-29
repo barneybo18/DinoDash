@@ -66,6 +66,13 @@ const GameCanvas = () => {
     const config = SCENERY_CONFIG_BASE[scenery];
     const backgroundItemsRef = useRef([]);
 
+    // For touch controls
+    const touchY = useRef(null);
+    const handleTouchStart = (e) => {
+        touchY.current = e.touches[0].clientY;
+    };
+
+
     // Initialize audio files
     useEffect(() => {
         jumpSoundRef.current = new Audio('/sounds/jump.mp3'); // Placeholder path
@@ -114,6 +121,30 @@ const GameCanvas = () => {
 
         playAudio(startSoundRef);
         playAudio(backgroundMusicRef, { volume: 0.3 });
+    };
+
+    const handleTouchMove = (e) => {
+        if (touchY.current === null) {
+            return;
+        }
+
+        const currentY = e.touches[0].clientY;
+        const diffY = currentY - touchY.current;
+
+        if (diffY > 50) { // Swipe down
+            inputRef.current.duck = true;
+        }
+    };
+
+    const handleTouchEnd = () => {
+        if (inputRef.current.duck) {
+            // If we were ducking, stop ducking
+            inputRef.current.duck = false;
+        } else {
+            // Otherwise, it was a tap, so jump
+            inputRef.current.jump = true;
+        }
+        touchY.current = null;
     };
 
     useEffect(() => {
@@ -433,6 +464,10 @@ const GameCanvas = () => {
                 this.isDucking = inputRef.current.duck;
                 wasJumping = inputRef.current.jump;
                 wasDucking = inputRef.current.duck;
+                // Reset jump after one frame to emulate a tap
+                if (inputRef.current.jump) {
+                    inputRef.current.jump = false;
+                }
             }
         };
 
@@ -832,6 +867,9 @@ const GameCanvas = () => {
         return () => {
             cancelAnimationFrame(animationFrameId);
             document.removeEventListener('keydown', handleKey);
+            canvas.removeEventListener('touchstart', handleTouchStart);
+            canvas.removeEventListener('touchmove', handleTouchMove);
+            canvas.removeEventListener('touchend', handleTouchEnd);
         };
     }, [gameState, scenery, dinoSkin, isMuted]);
 
@@ -842,6 +880,9 @@ const GameCanvas = () => {
                 width={1000}
                 height={600}
                 className="bg-gray-800 w-full h-auto max-w-5xl rounded-lg shadow-[0_0_15px_rgba(0,255,255,0.5)]"
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
             />
             {gameState.showInstructions && (
                 <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
